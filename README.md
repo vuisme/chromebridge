@@ -22,6 +22,10 @@ Companion LSPosed module for applying the current `vichanger` fake User-Agent pr
   `fullVersionList` and `formFactors`.
 - Applies `Emulation.setTimezoneOverride` when `device.xml` contains `timezone`.
 - Re-reads `device.xml` every loop, so it follows later `changeDevice` updates.
+- Normalizes the Chrome version instead of trusting the stale version embedded in
+  `vichanger`'s `user_agent`. The selected version is stable per fake profile.
+  Android 9 and older are pinned to Chrome `138.0.7204.179`; Android 10+ profiles
+  are mapped to a recent realistic version pool.
 
 ## Install
 

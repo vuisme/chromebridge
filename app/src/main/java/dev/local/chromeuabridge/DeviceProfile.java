@@ -10,12 +10,23 @@ import java.io.FileInputStream;
 final class DeviceProfile {
     static final String PATH =
             "/data/misc/29314ea0-e7b4-477e-bf38-67f557ef6fc7/prefs/vn.vichanger.app/device.xml";
+    private static final String[] CHROME_VERSIONS_ANDROID_10_PLUS = {
+            "139.0.7258.158",
+            "140.0.7339.155",
+            "141.0.7390.122",
+            "142.0.7444.175"
+    };
+    private static final String[] CHROME_VERSIONS_ANDROID_9_OR_OLDER = {
+            "138.0.7204.179"
+    };
 
     String brand = "";
     String model = "";
     String release = "";
     String timezone = "";
     String userAgent = "";
+    String androidId = "";
+    String serial = "";
 
     static DeviceProfile load() throws Exception {
         File file = new File(PATH);
@@ -44,6 +55,10 @@ final class DeviceProfile {
                     profile.timezone = value;
                 } else if ("user_agent".equals(name)) {
                     profile.userAgent = value;
+                } else if ("android_id".equals(name)) {
+                    profile.androidId = value;
+                } else if ("serial".equals(name)) {
+                    profile.serial = value;
                 }
             }
         } finally {
@@ -57,27 +72,25 @@ final class DeviceProfile {
     }
 
     String chromeMajor() {
-        String marker = "Chrome/";
-        int start = userAgent.indexOf(marker);
-        if (start < 0) {
-            return "101";
-        }
-
-        start += marker.length();
-        int end = userAgent.indexOf('.', start);
-        if (end < 0) {
-            end = userAgent.length();
-        }
-
-        String major = userAgent.substring(start, end);
-        return major.length() == 0 ? "101" : major;
+        String version = chromeFullVersion();
+        int end = version.indexOf('.');
+        return end > 0 ? version.substring(0, end) : version;
     }
 
     String chromeFullVersion() {
+        String[] pool = isAndroid9OrOlder()
+                ? CHROME_VERSIONS_ANDROID_9_OR_OLDER
+                : CHROME_VERSIONS_ANDROID_10_PLUS;
+        int index = Math.floorMod(stableKey().hashCode(), pool.length);
+        return pool[index];
+    }
+
+    String normalizedUserAgent() {
+        String version = chromeFullVersion();
         String marker = "Chrome/";
         int start = userAgent.indexOf(marker);
         if (start < 0) {
-            return "101.0.4951.61";
+            return userAgent;
         }
 
         start += marker.length();
@@ -86,6 +99,19 @@ final class DeviceProfile {
             end = userAgent.length();
         }
 
-        return userAgent.substring(start, end);
+        return userAgent.substring(0, start) + version + userAgent.substring(end);
+    }
+
+    private boolean isAndroid9OrOlder() {
+        try {
+            int major = Integer.parseInt(release.split("\\.")[0]);
+            return major <= 9;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private String stableKey() {
+        return brand + "|" + model + "|" + release + "|" + androidId + "|" + serial;
     }
 }

@@ -110,7 +110,7 @@ final class DevToolsUaKeeper implements Runnable {
                 .put("formFactors", new JSONArray().put("Mobile"));
 
         return new JSONObject()
-                .put("userAgent", profile.userAgent)
+                .put("userAgent", profile.normalizedUserAgent())
                 .put("acceptLanguage", "en-US,en")
                 .put("platform", "Linux armv81")
                 .put("userAgentMetadata", metadata);
