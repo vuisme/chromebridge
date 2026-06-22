@@ -13,6 +13,26 @@ android {
         versionCode 1
         versionName "1.0"
     }
+
+    signingConfigs {
+        fixed {
+            storeFile file("signing/test-signing.p12")
+            storePassword "chromeuabridge"
+            keyAlias "1"
+            keyPassword "chromeuabridge"
+            storeType "PKCS12"
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.fixed
+        }
+        release {
+            signingConfig signingConfigs.fixed
+            minifyEnabled false
+        }
+    }
 }
 
 dependencies {

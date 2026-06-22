@@ -22,6 +22,11 @@ import de.robv.android.xposed.XposedBridge;
 final class DevToolsUaKeeper implements Runnable {
     private static final String DEVTOOLS_SOCKET = "chrome_devtools_remote";
     private final SecureRandom random = new SecureRandom();
+    private final String packageName;
+
+    DevToolsUaKeeper(String packageName) {
+        this.packageName = packageName;
+    }
 
     @Override
     public void run() {
@@ -36,7 +41,7 @@ final class DevToolsUaKeeper implements Runnable {
     }
 
     private void runLoop() throws Exception {
-        Cdp cdp = Cdp.connect(DEVTOOLS_SOCKET);
+        Cdp cdp = connectDevTools();
         Map<String, String> sessions = new HashMap<>();
         int loops = 0;
 
@@ -114,6 +119,42 @@ final class DevToolsUaKeeper implements Runnable {
                 .put("acceptLanguage", "en-US,en")
                 .put("platform", "Linux armv81")
                 .put("userAgentMetadata", metadata);
+    }
+
+    private Cdp connectDevTools() throws Exception {
+        Throwable last = null;
+        for (String socket : socketCandidates()) {
+            try {
+                return Cdp.connect(socket);
+            } catch (Throwable t) {
+                last = t;
+            }
+        }
+        throw new IllegalStateException("No DevTools socket for " + packageName, last);
+    }
+
+    private String[] socketCandidates() {
+        if ("com.android.chrome".equals(packageName)
+                || packageName.startsWith("com.chrome.")
+                || packageName.startsWith("org.chromium.")
+                || packageName.startsWith("com.brave.")
+                || packageName.startsWith("com.vivaldi.")
+                || packageName.startsWith("com.opera.")
+                || packageName.startsWith("com.microsoft.emmx")
+                || packageName.startsWith("com.kiwibrowser.")
+                || packageName.startsWith("com.sec.android.app.sbrowser")
+                || packageName.startsWith("com.coccoc.")) {
+            return new String[]{
+                    "chrome_devtools_remote",
+                    packageName + "_devtools_remote",
+                    "webview_devtools_remote"
+            };
+        }
+        return new String[]{
+                "webview_devtools_remote",
+                packageName + "_devtools_remote",
+                "chrome_devtools_remote"
+        };
     }
 
     private void applyTimezone(Cdp cdp, DeviceProfile profile, String sessionId) {

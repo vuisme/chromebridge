@@ -17,6 +17,8 @@ Companion LSPosed module for applying the current `vichanger` fake User-Agent pr
   chrome_devtools_remote
   ```
 
+- Falls back to browser/WebView DevTools socket names for other Chromium-based
+  browsers and WebView targets.
 - Applies `Network.setUserAgentOverride` to every HTTP page target it sees.
 - Applies `Emulation.setUserAgentOverride` with high-entropy UA-CH fields:
   `fullVersionList` and `formFactors`.
@@ -34,7 +36,8 @@ Companion LSPosed module for applying the current `vichanger` fake User-Agent pr
    - Locally: run `gradle :app:assembleDebug`.
 2. Install it on the phone.
 3. Enable `Chrome UA Bridge` in LSPosed.
-4. Scope it to:
+4. Scope it to the target browser. The APK ships a recommended scope list for
+   Chrome, common Chromium-based browsers, and WebView packages. At minimum use:
 
    ```text
    com.android.chrome
@@ -66,3 +69,7 @@ navigator.userAgentData
 - This is independent from the PC-side PowerShell script.
 - It needs Chrome DevTools local socket to exist. On the tested device, `chrome_devtools_remote` exists.
 - It does not modify the Chrome APK or global Android properties.
+- APKs are signed with a committed test PKCS12 key at
+  `app/signing/test-signing.p12` so GitHub builds can be installed over earlier
+  builds from this repo. This key is intentionally public and only suitable for
+  test builds.
