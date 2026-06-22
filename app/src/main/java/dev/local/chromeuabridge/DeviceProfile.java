@@ -14,6 +14,7 @@ final class DeviceProfile {
     String brand = "";
     String model = "";
     String release = "";
+    String timezone = "";
     String userAgent = "";
 
     static DeviceProfile load() throws Exception {
@@ -39,6 +40,8 @@ final class DeviceProfile {
                     profile.model = value;
                 } else if ("release".equals(name)) {
                     profile.release = value;
+                } else if ("timezone".equals(name)) {
+                    profile.timezone = value;
                 } else if ("user_agent".equals(name)) {
                     profile.userAgent = value;
                 }

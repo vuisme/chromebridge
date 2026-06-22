@@ -69,7 +69,10 @@ final class DevToolsUaKeeper implements Runnable {
                 }
 
                 cdp.call("Network.enable", new JSONObject(), sessionId);
-                cdp.call("Network.setUserAgentOverride", buildOverride(profile), sessionId);
+                JSONObject override = buildOverride(profile);
+                cdp.call("Network.setUserAgentOverride", override, sessionId);
+                cdp.call("Emulation.setUserAgentOverride", override, sessionId);
+                applyTimezone(cdp, profile, sessionId);
             }
 
             if ((loops++ % 10) == 0) {
@@ -83,25 +86,48 @@ final class DevToolsUaKeeper implements Runnable {
 
     private JSONObject buildOverride(DeviceProfile profile) throws Exception {
         String major = profile.chromeMajor();
+        String fullVersion = profile.chromeFullVersion();
+        JSONArray brands = new JSONArray()
+                .put(new JSONObject().put("brand", "Not)A;Brand").put("version", "8"))
+                .put(new JSONObject().put("brand", "Chromium").put("version", major))
+                .put(new JSONObject().put("brand", "Google Chrome").put("version", major));
+        JSONArray fullVersionList = new JSONArray()
+                .put(new JSONObject().put("brand", "Not)A;Brand").put("version", "8.0.0.0"))
+                .put(new JSONObject().put("brand", "Chromium").put("version", fullVersion))
+                .put(new JSONObject().put("brand", "Google Chrome").put("version", fullVersion));
+
         JSONObject metadata = new JSONObject()
-                .put("brands", new JSONArray()
-                        .put(new JSONObject().put("brand", "Not)A;Brand").put("version", "8"))
-                        .put(new JSONObject().put("brand", "Chromium").put("version", major))
-                        .put(new JSONObject().put("brand", "Google Chrome").put("version", major)))
-                .put("fullVersion", profile.chromeFullVersion())
+                .put("brands", brands)
+                .put("fullVersion", fullVersion)
+                .put("fullVersionList", fullVersionList)
                 .put("platform", "Android")
                 .put("platformVersion", profile.release)
                 .put("architecture", "")
                 .put("model", profile.model)
                 .put("mobile", true)
                 .put("bitness", "")
-                .put("wow64", false);
+                .put("wow64", false)
+                .put("formFactors", new JSONArray().put("Mobile"));
 
         return new JSONObject()
                 .put("userAgent", profile.userAgent)
                 .put("acceptLanguage", "en-US,en")
                 .put("platform", "Linux armv81")
                 .put("userAgentMetadata", metadata);
+    }
+
+    private void applyTimezone(Cdp cdp, DeviceProfile profile, String sessionId) {
+        if (profile.timezone == null || profile.timezone.length() == 0) {
+            return;
+        }
+
+        try {
+            cdp.call("Emulation.setTimezoneOverride",
+                    new JSONObject().put("timezoneId", profile.timezone),
+                    sessionId);
+        } catch (Throwable t) {
+            XposedBridge.log("ChromeUaBridge: timezone override failed: " + t);
+        }
     }
 
     private static void sleep(long ms) {

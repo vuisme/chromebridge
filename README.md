@@ -18,6 +18,9 @@ Companion LSPosed module for applying the current `vichanger` fake User-Agent pr
   ```
 
 - Applies `Network.setUserAgentOverride` to every HTTP page target it sees.
+- Applies `Emulation.setUserAgentOverride` with high-entropy UA-CH fields:
+  `fullVersionList` and `formFactors`.
+- Applies `Emulation.setTimezoneOverride` when `device.xml` contains `timezone`.
 - Re-reads `device.xml` every loop, so it follows later `changeDevice` updates.
 
 ## Install
