@@ -26,7 +26,7 @@ Companion LSPosed module for applying the current `vichanger` fake User-Agent pr
 ## Install
 
 1. Build the APK from this project.
-   - On GitHub: use the `Build APK` workflow and download the uploaded artifact.
+   - On GitHub: push to `main` or run the `Build APK` workflow. It uploads an artifact and publishes a GitHub Release named `Build <run_number>`.
    - Locally: run `gradle :app:assembleDebug`.
 2. Install it on the phone.
 3. Enable `Chrome UA Bridge` in LSPosed.
