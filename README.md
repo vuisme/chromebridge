@@ -73,7 +73,7 @@ restore tất cả cookie/session đã đăng nhập. Cookie được dump ở d
 ### Yêu cầu
 
 - Máy cũ: đã root + LSPosed + module này đã cài
-- Chrome (hoặc browser Chromium) đang mở ít nhất 1 tab HTTP
+- Chrome (hoặc browser Chromium) đang mở ít nhất 1 tab
 - ADB kết nối được với máy
 
 ### Export (máy cũ)
@@ -82,13 +82,14 @@ restore tất cả cookie/session đã đăng nhập. Cookie được dump ở d
 # Mở Chrome trước, rồi chạy:
 adb shell am broadcast -a dev.local.chromeuabridge.EXPORT_COOKIES
 
-# Kết quả lưu tại /sdcard/chromeuabridge_cookies.json
+# File mặc định lưu tại thư mục scoped-storage của Chrome:
+#   /sdcard/Android/data/com.android.chrome/files/chromeuabridge_cookies.json
 # Pull về PC:
-adb pull /sdcard/chromeuabridge_cookies.json
+adb pull /sdcard/Android/data/com.android.chrome/files/chromeuabridge_cookies.json
 
-# (Tùy chọn) Chỉ định path khác:
+# (Tùy chọn) Chỉ định path khác (phải nằm trong vùng Chrome có quyền ghi):
 adb shell am broadcast -a dev.local.chromeuabridge.EXPORT_COOKIES \
-    --es path /sdcard/Download/my_cookies.json
+    --es path /sdcard/Android/data/com.android.chrome/files/my_cookies.json
 ```
 
 ### Import (máy mới)
@@ -96,8 +97,10 @@ adb shell am broadcast -a dev.local.chromeuabridge.EXPORT_COOKIES \
 **Cách 1: Import thủ công**
 
 ```bash
-# Push file cookie lên máy mới:
-adb push chromeuabridge_cookies.json /sdcard/chromeuabridge_cookies.json
+# Tạo thư mục và push file cookie lên máy mới:
+adb shell mkdir -p /sdcard/Android/data/com.android.chrome/files
+adb push chromeuabridge_cookies.json \
+    /sdcard/Android/data/com.android.chrome/files/chromeuabridge_cookies.json
 
 # Mở Chrome, rồi chạy:
 adb shell am broadcast -a dev.local.chromeuabridge.IMPORT_COOKIES
@@ -105,22 +108,24 @@ adb shell am broadcast -a dev.local.chromeuabridge.IMPORT_COOKIES
 
 **Cách 2: Auto-import khi khởi động**
 
-Chỉ cần push file vào `/sdcard/chromeuabridge_cookies.json` rồi mở Chrome.
-Module sẽ tự phát hiện file và import. Sau khi xong, file được rename thành
-`.imported` để không import lại.
+Push file vào thư mục mặc định rồi mở Chrome. Module sẽ tự phát hiện file
+và import. Sau khi xong, file được rename thành `.imported` để không import lại.
 
 ```bash
-adb push chromeuabridge_cookies.json /sdcard/chromeuabridge_cookies.json
+adb shell mkdir -p /sdcard/Android/data/com.android.chrome/files
+adb push chromeuabridge_cookies.json \
+    /sdcard/Android/data/com.android.chrome/files/chromeuabridge_cookies.json
 # Mở Chrome → module tự import
 ```
 
 ### Kiểm tra
 
 ```bash
-adb logcat -s ChromeUaBridge
+adb logcat -s LSPosed-Bridge | grep ChromeUaBridge
+# ChromeUaBridge: cookie bridge registered for com.android.chrome | default dir: ...
 # ChromeUaBridge: exporting cookies from com.android.chrome ...
-# ChromeUaBridge: exported 142 cookies to /sdcard/chromeuabridge_cookies.json
-# ChromeUaBridge: ⚠ WARNING: file contains plaintext session tokens! Delete after import.
+# ChromeUaBridge: ✓ exported 142 cookies to /sdcard/Android/data/.../chromeuabridge_cookies.json
+# ChromeUaBridge: → adb pull /sdcard/Android/data/.../chromeuabridge_cookies.json
 ```
 
 > **⚠ Bảo mật:** File export chứa plaintext session tokens (Google, Facebook, v.v.).

@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.os.Environment;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -23,18 +22,25 @@ import de.robv.android.xposed.XposedBridge;
 /**
  * BroadcastReceiver that handles cookie export/import via ADB commands.
  *
+ * <p>Default output goes to the browser's own scoped-storage directory
+ * ({@code /sdcard/Android/data/<package>/files/}) so no extra storage
+ * permissions are needed. The directory is created automatically by
+ * {@link Context#getExternalFilesDir} and is accessible via {@code adb pull}.
+ *
  * <h3>Export (old phone):</h3>
  * <pre>
  * adb shell am broadcast -a dev.local.chromeuabridge.EXPORT_COOKIES
- * adb shell am broadcast -a dev.local.chromeuabridge.EXPORT_COOKIES --es path /sdcard/my_cookies.json
- * adb pull /sdcard/chromeuabridge_cookies.json
+ * adb pull /sdcard/Android/data/com.android.chrome/files/chromeuabridge_cookies.json
+ *
+ * # Custom path (must be writable by Chrome UID):
+ * adb shell am broadcast -a dev.local.chromeuabridge.EXPORT_COOKIES \
+ *     --es path /sdcard/Android/data/com.android.chrome/files/my_cookies.json
  * </pre>
  *
  * <h3>Import (new phone):</h3>
  * <pre>
- * adb push chromeuabridge_cookies.json /sdcard/
+ * adb push chromeuabridge_cookies.json /sdcard/Android/data/com.android.chrome/files/
  * adb shell am broadcast -a dev.local.chromeuabridge.IMPORT_COOKIES
- * adb shell am broadcast -a dev.local.chromeuabridge.IMPORT_COOKIES --es path /sdcard/my_cookies.json
  * </pre>
  *
  * Cookies are obtained/injected via Chrome DevTools Protocol (already decrypted
@@ -47,6 +53,9 @@ public final class CookieBridge extends BroadcastReceiver {
     private static final String DEFAULT_FILE = "chromeuabridge_cookies.json";
     private static final String TAG = "ChromeUaBridge";
 
+    /** Application context, set once during {@link #register}. */
+    private static volatile Context appContext;
+
     private final String packageName;
 
     CookieBridge(String packageName) {
@@ -58,12 +67,17 @@ public final class CookieBridge extends BroadcastReceiver {
      * Called from the Xposed hook on {@code Application.onCreate}.
      */
     static void register(Context context, String packageName) {
+        appContext = context.getApplicationContext();
+
         CookieBridge receiver = new CookieBridge(packageName);
         IntentFilter filter = new IntentFilter();
         filter.addAction(ACTION_EXPORT);
         filter.addAction(ACTION_IMPORT);
         context.registerReceiver(receiver, filter);
-        XposedBridge.log(TAG + ": cookie bridge registered for " + packageName);
+
+        String defaultDir = defaultDir();
+        XposedBridge.log(TAG + ": cookie bridge registered for " + packageName
+                + " | default dir: " + defaultDir);
     }
 
     @Override
@@ -73,8 +87,7 @@ public final class CookieBridge extends BroadcastReceiver {
 
         String path = intent.getStringExtra("path");
         if (path == null || path.isEmpty()) {
-            path = new File(Environment.getExternalStorageDirectory(), DEFAULT_FILE)
-                    .getAbsolutePath();
+            path = new File(defaultDir(), DEFAULT_FILE).getAbsolutePath();
         }
 
         final String filePath = path;
@@ -89,6 +102,10 @@ public final class CookieBridge extends BroadcastReceiver {
                 }
             } catch (Throwable t) {
                 XposedBridge.log(TAG + ": cookie operation failed: " + t);
+                // Log the full stack trace for easier debugging
+                for (StackTraceElement e : t.getStackTrace()) {
+                    XposedBridge.log(TAG + ":   at " + e);
+                }
             } finally {
                 pending.finish();
             }
@@ -100,7 +117,10 @@ public final class CookieBridge extends BroadcastReceiver {
      * Called from the Xposed hook after registering the receiver.
      */
     static void autoImport(String packageName) {
-        File file = new File(Environment.getExternalStorageDirectory(), DEFAULT_FILE);
+        String dir = defaultDir();
+        if (dir == null) return;
+
+        File file = new File(dir, DEFAULT_FILE);
         if (!file.isFile()) return;
 
         XposedBridge.log(TAG + ": found cookie backup at " + file.getAbsolutePath()
@@ -121,6 +141,7 @@ public final class CookieBridge extends BroadcastReceiver {
 
     private void exportCookies(String outputPath) throws Exception {
         XposedBridge.log(TAG + ": exporting cookies from " + packageName + " ...");
+        XposedBridge.log(TAG + ": output path: " + outputPath);
 
         Cdp cdp = DevToolsUaKeeper.connectDevTools(packageName);
         try {
@@ -147,8 +168,9 @@ public final class CookieBridge extends BroadcastReceiver {
             // Write to file
             writeFile(outputPath, output.toString(2));
 
-            XposedBridge.log(TAG + ": exported " + cookies.length()
+            XposedBridge.log(TAG + ": ✓ exported " + cookies.length()
                     + " cookies to " + outputPath);
+            XposedBridge.log(TAG + ": → adb pull " + outputPath);
             XposedBridge.log(TAG + ": ⚠ WARNING: file contains plaintext session tokens! "
                     + "Delete after import.");
 
@@ -161,6 +183,7 @@ public final class CookieBridge extends BroadcastReceiver {
 
     private void importCookies(String inputPath) throws Exception {
         XposedBridge.log(TAG + ": importing cookies into " + packageName + " ...");
+        XposedBridge.log(TAG + ": input path: " + inputPath);
 
         String json = readFile(inputPath);
         JSONObject input = new JSONObject(json);
@@ -213,26 +236,64 @@ public final class CookieBridge extends BroadcastReceiver {
     // ── Helpers ──────────────────────────────────────────────────────────
 
     /**
-     * Attach to the first available HTTP page target.
+     * Resolve the default output directory using the app's scoped external files dir.
+     * Falls back to {@code /sdcard/} if the Context is unavailable (should not happen).
+     * <p>
+     * Uses {@link Context#getExternalFilesDir} which:
+     * <ul>
+     *   <li>Automatically creates the directory</li>
+     *   <li>Is always writable by the app's UID (no WRITE_EXTERNAL_STORAGE needed)</li>
+     *   <li>Is accessible via {@code adb pull} without root</li>
+     * </ul>
+     *
+     * @return absolute path to the directory, e.g. {@code /sdcard/Android/data/com.android.chrome/files}
+     */
+    private static String defaultDir() {
+        if (appContext != null) {
+            File dir = appContext.getExternalFilesDir(null);
+            if (dir != null) {
+                return dir.getAbsolutePath();
+            }
+        }
+        // Fallback (should not reach here in normal operation)
+        return "/sdcard";
+    }
+
+    /**
+     * Attach to the first available page target (any type, not just HTTP).
      * Returns the session ID.
      */
     private String attachToAnyPage(Cdp cdp) throws Exception {
         JSONObject targets = cdp.call("Target.getTargets", null, null);
         JSONArray infos = targets.getJSONObject("result").getJSONArray("targetInfos");
 
+        // First pass: prefer HTTP pages
+        for (int i = 0; i < infos.length(); i++) {
+            JSONObject target = infos.getJSONObject(i);
+            if (!"page".equals(target.optString("type"))) continue;
+            String url = target.optString("url", "");
+            if (!url.startsWith("http")) continue;
+
+            return attachTarget(cdp, target.getString("targetId"));
+        }
+
+        // Second pass: any page target (including chrome://, about:, etc.)
         for (int i = 0; i < infos.length(); i++) {
             JSONObject target = infos.getJSONObject(i);
             if (!"page".equals(target.optString("type"))) continue;
 
-            String targetId = target.getString("targetId");
-            JSONObject params = new JSONObject()
-                    .put("targetId", targetId)
-                    .put("flatten", true);
-            JSONObject attached = cdp.call("Target.attachToTarget", params, null);
-            return attached.getJSONObject("result").getString("sessionId");
+            return attachTarget(cdp, target.getString("targetId"));
         }
 
         throw new IllegalStateException("No page target available. Open a tab in Chrome first.");
+    }
+
+    private String attachTarget(Cdp cdp, String targetId) throws Exception {
+        JSONObject params = new JSONObject()
+                .put("targetId", targetId)
+                .put("flatten", true);
+        JSONObject attached = cdp.call("Target.attachToTarget", params, null);
+        return attached.getJSONObject("result").getString("sessionId");
     }
 
     /**
@@ -268,7 +329,9 @@ public final class CookieBridge extends BroadcastReceiver {
         File file = new File(path);
         File parent = file.getParentFile();
         if (parent != null && !parent.exists()) {
-            parent.mkdirs();
+            if (!parent.mkdirs()) {
+                XposedBridge.log(TAG + ": warning: mkdirs failed for " + parent.getAbsolutePath());
+            }
         }
 
         FileOutputStream fos = new FileOutputStream(file);
@@ -281,6 +344,9 @@ public final class CookieBridge extends BroadcastReceiver {
 
     private static String readFile(String path) throws Exception {
         File file = new File(path);
+        if (!file.isFile()) {
+            throw new IllegalArgumentException("Cookie file not found: " + path);
+        }
         byte[] data = new byte[(int) file.length()];
         FileInputStream fis = new FileInputStream(file);
         try {
