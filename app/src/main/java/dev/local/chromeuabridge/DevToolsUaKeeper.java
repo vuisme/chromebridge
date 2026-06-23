@@ -23,6 +23,7 @@ final class DevToolsUaKeeper implements Runnable {
     private static final String DEVTOOLS_SOCKET = "chrome_devtools_remote";
     private final SecureRandom random = new SecureRandom();
     private final String packageName;
+    private String loggedProfilePath = "";
 
     DevToolsUaKeeper(String packageName) {
         this.packageName = packageName;
@@ -47,6 +48,10 @@ final class DevToolsUaKeeper implements Runnable {
 
         while (true) {
             DeviceProfile profile = DeviceProfile.load();
+            if (!profile.sourcePath.equals(loggedProfilePath)) {
+                loggedProfilePath = profile.sourcePath;
+                XposedBridge.log("ChromeUaBridge: using vichanger profile " + loggedProfilePath);
+            }
             JSONObject targets = cdp.call("Target.getTargets", null, null);
             JSONArray infos = targets.getJSONObject("result").getJSONArray("targetInfos");
 

@@ -8,8 +8,10 @@ import java.io.File;
 import java.io.FileInputStream;
 
 final class DeviceProfile {
-    static final String PATH =
+    private static final String LEGACY_PATH =
             "/data/misc/29314ea0-e7b4-477e-bf38-67f557ef6fc7/prefs/vn.vichanger.app/device.xml";
+    private static final String DATA_MISC = "/data/misc";
+    private static final String PROFILE_SUFFIX = "prefs/vn.vichanger.app/device.xml";
     private static final String[] CHROME_VERSIONS_ANDROID_10_PLUS = {
             "139.0.7258.158",
             "140.0.7339.155",
@@ -27,10 +29,14 @@ final class DeviceProfile {
     String userAgent = "";
     String androidId = "";
     String serial = "";
+    String sourcePath = "";
+
+    private static File cachedProfileFile;
 
     static DeviceProfile load() throws Exception {
-        File file = new File(PATH);
+        File file = findProfileFile();
         DeviceProfile profile = new DeviceProfile();
+        profile.sourcePath = file.getAbsolutePath();
 
         FileInputStream input = new FileInputStream(file);
         try {
@@ -66,9 +72,36 @@ final class DeviceProfile {
         }
 
         if (profile.userAgent == null || profile.userAgent.length() == 0) {
-            throw new IllegalStateException("Missing user_agent in " + PATH);
+            throw new IllegalStateException("Missing user_agent in " + profile.sourcePath);
         }
         return profile;
+    }
+
+    private static File findProfileFile() {
+        if (cachedProfileFile != null && cachedProfileFile.isFile()) {
+            return cachedProfileFile;
+        }
+
+        File newest = null;
+        File dataMisc = new File(DATA_MISC);
+        File[] appDirs = dataMisc.listFiles();
+        if (appDirs != null) {
+            for (File appDir : appDirs) {
+                File candidate = new File(appDir, PROFILE_SUFFIX);
+                if (!candidate.isFile()) {
+                    continue;
+                }
+                if (newest == null || candidate.lastModified() > newest.lastModified()) {
+                    newest = candidate;
+                }
+            }
+        }
+
+        if (newest == null) {
+            newest = new File(LEGACY_PATH);
+        }
+        cachedProfileFile = newest;
+        return newest;
     }
 
     String chromeMajor() {
