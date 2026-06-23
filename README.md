@@ -64,6 +64,68 @@ navigator.userAgentData
 
 `/json/version` may still show Chrome's original process User-Agent. The page target is the source of truth for this module.
 
+## Cookie Export / Import (chuyển máy)
+
+Khi chuyển từ máy cũ (đã root) sang máy mới, dùng tính năng này để backup và
+restore tất cả cookie/session đã đăng nhập. Cookie được dump ở dạng plaintext
+(đã giải mã), bypass mã hóa Android Keystore gắn với phần cứng máy cũ.
+
+### Yêu cầu
+
+- Máy cũ: đã root + LSPosed + module này đã cài
+- Chrome (hoặc browser Chromium) đang mở ít nhất 1 tab HTTP
+- ADB kết nối được với máy
+
+### Export (máy cũ)
+
+```bash
+# Mở Chrome trước, rồi chạy:
+adb shell am broadcast -a dev.local.chromeuabridge.EXPORT_COOKIES
+
+# Kết quả lưu tại /sdcard/chromeuabridge_cookies.json
+# Pull về PC:
+adb pull /sdcard/chromeuabridge_cookies.json
+
+# (Tùy chọn) Chỉ định path khác:
+adb shell am broadcast -a dev.local.chromeuabridge.EXPORT_COOKIES \
+    --es path /sdcard/Download/my_cookies.json
+```
+
+### Import (máy mới)
+
+**Cách 1: Import thủ công**
+
+```bash
+# Push file cookie lên máy mới:
+adb push chromeuabridge_cookies.json /sdcard/chromeuabridge_cookies.json
+
+# Mở Chrome, rồi chạy:
+adb shell am broadcast -a dev.local.chromeuabridge.IMPORT_COOKIES
+```
+
+**Cách 2: Auto-import khi khởi động**
+
+Chỉ cần push file vào `/sdcard/chromeuabridge_cookies.json` rồi mở Chrome.
+Module sẽ tự phát hiện file và import. Sau khi xong, file được rename thành
+`.imported` để không import lại.
+
+```bash
+adb push chromeuabridge_cookies.json /sdcard/chromeuabridge_cookies.json
+# Mở Chrome → module tự import
+```
+
+### Kiểm tra
+
+```bash
+adb logcat -s ChromeUaBridge
+# ChromeUaBridge: exporting cookies from com.android.chrome ...
+# ChromeUaBridge: exported 142 cookies to /sdcard/chromeuabridge_cookies.json
+# ChromeUaBridge: ⚠ WARNING: file contains plaintext session tokens! Delete after import.
+```
+
+> **⚠ Bảo mật:** File export chứa plaintext session tokens (Google, Facebook, v.v.).
+> Xóa file sau khi import xong!
+
 ## Notes
 
 - This is independent from the PC-side PowerShell script.

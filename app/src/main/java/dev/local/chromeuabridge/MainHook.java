@@ -1,9 +1,13 @@
 package dev.local.chromeuabridge;
 
+import android.app.Application;
+
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
+import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
+import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class MainHook implements IXposedHookLoadPackage {
@@ -57,6 +61,20 @@ public final class MainHook implements IXposedHookLoadPackage {
         Thread worker = new Thread(new DevToolsUaKeeper(lpparam.packageName), "ChromeUaBridge");
         worker.setDaemon(true);
         worker.start();
+
+        // Hook Application.onCreate to register cookie export/import receiver
+        final String pkg = lpparam.packageName;
+        XposedHelpers.findAndHookMethod(
+                "android.app.Application", lpparam.classLoader,
+                "onCreate", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Application app = (Application) param.thisObject;
+                        CookieBridge.register(app, pkg);
+                        CookieBridge.autoImport(pkg);
+                    }
+                }
+        );
     }
 
     private static boolean isSupportedPackage(String packageName) {
