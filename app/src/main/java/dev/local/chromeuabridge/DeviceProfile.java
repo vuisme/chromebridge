@@ -21,6 +21,9 @@ final class DeviceProfile {
     private static final String[] CHROME_VERSIONS_ANDROID_9_OR_OLDER = {
             "138.0.7204.179"
     };
+    private static final String[] DIVERSE_ANDROID_VERSIONS = {
+            "10", "11", "12", "13", "14", "15"
+    };
 
     String brand = "";
     String model = "";
@@ -74,6 +77,8 @@ final class DeviceProfile {
         if (profile.userAgent == null || profile.userAgent.length() == 0) {
             throw new IllegalStateException("Missing user_agent in " + profile.sourcePath);
         }
+
+        profile.diversifyRelease();
         return profile;
     }
 
@@ -146,5 +151,28 @@ final class DeviceProfile {
 
     private String stableKey() {
         return brand + "|" + model + "|" + release + "|" + androidId + "|" + serial;
+    }
+
+    /**
+     * Diversify the Android release version by selecting from a broader pool
+     * (Android 10–15) instead of relying solely on Vichanger which mostly
+     * returns Android 12 and below.
+     * <p>
+     * Uses a stable seed derived from the device identity (brand, model,
+     * androidId, serial) — excludes the original {@code release} so the same
+     * device always maps to the same diversified version regardless of what
+     * Vichanger originally returned.
+     */
+    private void diversifyRelease() {
+        String seed = brand + "|" + model + "|" + androidId + "|" + serial;
+        int index = Math.floorMod(seed.hashCode(), DIVERSE_ANDROID_VERSIONS.length);
+        String newRelease = DIVERSE_ANDROID_VERSIONS[index];
+
+        // Update Android version in the UA string to match
+        if (userAgent.length() > 0) {
+            userAgent = userAgent.replaceAll("Android \\d+", "Android " + newRelease);
+        }
+
+        release = newRelease;
     }
 }
