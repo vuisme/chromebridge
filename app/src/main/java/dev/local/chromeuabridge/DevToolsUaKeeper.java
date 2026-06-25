@@ -11,6 +11,7 @@ import de.robv.android.xposed.XposedBridge;
 final class DevToolsUaKeeper implements Runnable {
     private final String packageName;
     private String loggedProfilePath = "";
+    private String loggedGeoCity = "";
 
     DevToolsUaKeeper(String packageName) {
         this.packageName = packageName;
@@ -70,6 +71,7 @@ final class DevToolsUaKeeper implements Runnable {
                 cdp.call("Network.setUserAgentOverride", override, sessionId);
                 cdp.call("Emulation.setUserAgentOverride", override, sessionId);
                 applyTimezone(cdp, profile, sessionId);
+                applyGeolocation(cdp, profile, sessionId);
             }
 
             if ((loops++ % 10) == 0) {
@@ -164,6 +166,30 @@ final class DevToolsUaKeeper implements Runnable {
                     sessionId);
         } catch (Throwable t) {
             XposedBridge.log("ChromeUaBridge: timezone override failed: " + t);
+        }
+    }
+
+    private void applyGeolocation(Cdp cdp, DeviceProfile profile, String sessionId) {
+        try {
+            String seed = profile.brand + "|" + profile.model + "|"
+                    + profile.androidId + "|" + profile.serial;
+            VietnamGeo geo = VietnamGeo.forProfile(seed);
+
+            if (!geo.city.equals(loggedGeoCity)) {
+                loggedGeoCity = geo.city;
+                XposedBridge.log("ChromeUaBridge: geolocation → " + geo.city
+                        + String.format(" (%.4f, %.4f) accuracy=%.0fm",
+                                geo.latitude, geo.longitude, geo.accuracy));
+            }
+
+            cdp.call("Emulation.setGeolocationOverride",
+                    new JSONObject()
+                            .put("latitude", geo.latitude)
+                            .put("longitude", geo.longitude)
+                            .put("accuracy", geo.accuracy),
+                    sessionId);
+        } catch (Throwable t) {
+            XposedBridge.log("ChromeUaBridge: geolocation override failed: " + t);
         }
     }
 
